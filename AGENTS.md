@@ -9,3 +9,14 @@ Use the repository's `research-audit` skill for literature searches, reference c
 5. Keep unpublished PDFs, credentials and project data outside Git; never transmit local PDFs to third-party services without explicit authorization. GROBID is local-only by default.
 6. Run `python -m pytest -q` before proposing code changes. Keep API errors visible, not masked as empty results.
 7. Codex should use the CLI from an activated environment: `rh discover`, `rh bibliography`, `rh matrix`, `rh gate`, or `rh ask`.
+
+
+## Operational checks
+
+- Run `rh doctor` to inspect local Docker, GROBID and optional PaperQA readiness.
+- Run `rh smoke` only when network access and rate budgets permit; inspect all
+  provider statuses before reporting discovery completeness.
+- Use `docker compose up -d grobid` for local extraction. Do not upload private
+  manuscripts to remote PDF parsing services without the owner's explicit approval.
+- `pqa --help` verifies CLI installation only; live LLM invocation requires separate
+  credentials/permissions and may incur costs. Never promise it works without testing.

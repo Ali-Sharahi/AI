@@ -1,0 +1,106 @@
+name: Live integration diagnostics
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'research_harness/**'
+      - '.github/workflows/live-integration.yml'
+      - 'compose.yml'
+
+jobs:
+  service-probes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install harness
+        run: python -m pip install -e '.[dev]'
+      - name: Local diagnostics
+        run: rh doctor --out results/doctor.json
+      - name: Probe public scientific APIs
+        id: live
+        continue-on-error: true
+        env:
+          OPENALEX_API_KEY: ${{ secrets.OPENALEX_API_KEY }}
+          SEMANTIC_SCHOLAR_API_KEY: ${{ secrets.SEMANTIC_SCHOLAR_API_KEY }}
+          CROSSREF_MAILTO: ${{ secrets.CROSSREF_MAILTO }}
+        run: rh smoke --limit 2 --out results/live-smoke.json
+      - name: Summarize status (do not mask failures)
+        if: always()
+        run: |
+          if test -f results/live-smoke.json; then
+            echo '### Live scholarly API probes' >> "$GITHUB_STEP_SUMMARY"
+            echo 'rh smoke conclusion: ${{ steps.live.outcome }}' >> "$GITHUB_STEP_SUMMARY"
+            echo '```json' >> "$GITHUB_STEP_SUMMARY"
+            cat results/live-smoke.json >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: live-diagnostics
+          path: results/*.json
+          if-no-files-found: warn
+  grobid-service:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install tooling
+        run: python -m pip install -e '.[dev]' reportlab
+      - name: Start isolated local GROBID
+        run: docker compose up -d grobid
+      - name: Wait for GROBID readiness
+        run: |
+          for i in $(seq 1 75); do
+            if curl -fsS http://127.0.0.1:8070/api/isalive | grep -qi true; then exit 0; fi
+            sleep 5
+          done
+          docker compose logs --tail 50 grobid
+          exit 1
+      - name: Real PDF to GROBID TEI integration
+        run: python tests/integration_grobid.py
+      - name: Diagnostics
+        if: always()
+        run: rh doctor --out results/doctor-grobid.json || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: grobid-diagnostics
+          path: results/*.json
+          if-no-files-found: warn
+      - name: Shut down local service
+        if: always()
+        run: docker compose down || true
+  paperqa-install:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install optional PaperQA and harness
+        run: python -m pip install -e '.[paperqa]'
+      - name: Confirm PaperQA CLI is available (no model calls)
+        run: |
+          pqa --help > /dev/null
+          rh doctor --out results/doctor-paperqa.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: paperqa-install-diagnostics
+          path: results/doctor-paperqa.json
+          if-no-files-found: warn

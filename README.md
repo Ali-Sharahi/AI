@@ -82,3 +82,49 @@ Exit code **2** means blocked or a provider error; code **0** from the gate mean
 ## Documentation
 
 [Codex skill locations](https://learn.chatgpt.com/docs/build-skills) · [OpenAlex API](https://help.openalex.org/api/) · [Semantic Scholar API](https://api.semanticscholar.org/api-docs/graphs) · [GROBID API](https://grobid.readthedocs.io/) · [Crossref REST API](https://www.crossref.org/documentation/retrieve-metadata/rest-api/) · [PaperQA on PyPI](https://pypi.org/project/paper-qa/)
+
+
+## Operational readiness and real-service validation
+
+The following commands are **not** scientific validation. They separate local installation,
+network connectivity and research evidence checks:
+
+```bash
+rh doctor --out results/doctor.json    # local check; does not reveal credential values
+rh smoke --out results/live-smoke.json # opt-in: one tiny query per public scholarly provider
+```
+
+A smoke test returns exit code 2 unless **all four** services return nonempty results.
+Read `results/live-smoke.json` for individual statuses (`ok`, `empty`, `rate_limited`,
+`unauthorized`, `http_error`, `error`). Do not interpret an unsuccessful service check
+as a finding about the absence of prior research. Public-access quotas and network
+restrictions may prevent searches even when a provider is operational.
+
+Run GROBID with Docker Compose, restricted to the local loopback interface:
+
+```bash
+docker compose up -d grobid
+rh doctor
+rh bibliography /path/to/manuscript.pdf --verify
+```
+
+`compose.yml` pins the resource-efficient CRF variant. Full model accuracy can be
+better at higher compute cost; switch images intentionally if needed. A CI integration
+job tests a synthetic PDF against the actual container and stores the TEI-derived
+result count as an artifact. Do not commit manuscripts or extracted unpublished content.
+
+Optional PaperQA installation and CLI availability are checked in CI **without**
+sending a document to an LLM; actual question answering requires you to supply a
+model backend and the corresponding credentials in your own runtime.
+
+The GitHub Actions workflow `Live integration diagnostics` tests real APIs and local
+GROBID service on a dedicated runner. The provider probe step is marked
+`continue-on-error` **only to preserve the complete per-service report**;
+`success` at the job level does not imply all providers worked. Read the
+`live-diagnostics` artifact and the step outcome. API secrets must be configured in
+GitHub *Actions Secrets* (not in repository files): `OPENALEX_API_KEY`,
+`SEMANTIC_SCHOLAR_API_KEY`, and, optionally, `CROSSREF_MAILTO`.
+
+Codex reads `AGENTS.md` and the `.agents/skills/research-audit/SKILL.md` when the
+repository is opened as a Codex workspace. GitHub publishing alone does not start
+an autonomous Codex session or configure model credentials in that session.

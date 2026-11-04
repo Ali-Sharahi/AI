@@ -8,6 +8,7 @@ import xml.etree.ElementTree as ET
 import subprocess
 from pathlib import Path
 
+from .diagnostics import doctor, smoke_live
 from .harness import (ResearchClient, VERSION, deduplicate, gate_claims, paperqa_ask,
                       utc_now, verify_references, write_json, write_matrix)
 
@@ -33,6 +34,13 @@ def build_parser() -> argparse.ArgumentParser:
     g = sub.add_parser("gate", help="Fail-closed claim evidence checklist")
     g.add_argument("claims", type=Path)
     g.add_argument("--out", type=Path, default=Path("results/gate-report.json"))
+    d = sub.add_parser("doctor", help="Check local tools and GROBID without exposing secrets")
+    d.add_argument("--grobid-url", default="http://127.0.0.1:8070")
+    d.add_argument("--out", type=Path, default=Path("results/doctor.json"))
+    l = sub.add_parser("smoke", help="Opt-in LIVE check of OpenAlex, Semantic Scholar, arXiv, Crossref")
+    l.add_argument("--query", default="distributed control")
+    l.add_argument("--limit", type=int, default=2)
+    l.add_argument("--out", type=Path, default=Path("results/live-smoke.json"))
     a = sub.add_parser("ask", help="Run separately installed PaperQA on local PDF folder")
     a.add_argument("question")
     a.add_argument("--pdf-dir", type=Path, required=True)
@@ -80,6 +88,16 @@ def main(argv: list[str] | None = None) -> int:
             write_json(args.out, report)
             print(f"Evidence gate: {report['status']}; report: {args.out}")
             return 0 if report["status"] == "READY_FOR_EXTERNAL_REVIEW" else 2
+        if args.command == "doctor":
+            report = doctor(grobid_url=args.grobid_url)
+            write_json(args.out, report)
+            print(json.dumps(report, indent=2))
+            return 0
+        if args.command == "smoke":
+            report = smoke_live(query=args.query, limit=args.limit)
+            write_json(args.out, report)
+            print(json.dumps(report, indent=2))
+            return 0 if report["status"] == "ok" else 2
         if args.command == "ask":
             paperqa_ask(args.pdf_dir, args.question)
             return 0
