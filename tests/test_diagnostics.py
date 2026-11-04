@@ -55,3 +55,18 @@ def test_cli_smoke_diagnostics(tmp_path):
     with patch("research_harness.cli.smoke_live", return_value={"status": "incomplete"}):
         assert main(["smoke", "--out", str(out)]) == 2
     assert json.loads(out.read_text())["status"] == "incomplete"
+
+
+def test_grobid_blocks_userinfo_redirect_like_url(tmp_path):
+    from research_harness.harness import ResearchClient, validate_grobid_local_url
+    import pytest
+    malicious = ["http://localhost:8070@evil.example", "http://127.0.0.1:8070@evil.example",
+                 "http://localhost:8070/other", "https://localhost:8070", "http://[::1]:8070@evil.example"]
+    pdf = tmp_path / "x.pdf"
+    pdf.write_bytes(b"%PDF-1.4")
+    for url in malicious:
+        with pytest.raises(ValueError):
+            validate_grobid_local_url(url)
+        with ResearchClient(transport=httpx.MockTransport(lambda req: httpx.Response(200))) as client:
+            with pytest.raises(ValueError):
+                client.grobid_references(pdf, url)

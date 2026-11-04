@@ -10,7 +10,7 @@ from typing import Any
 
 import httpx
 
-from .harness import ResearchClient, utc_now
+from .harness import ResearchClient, utc_now, validate_grobid_local_url
 
 
 def _installed(package: str) -> str | None:
@@ -22,8 +22,7 @@ def _installed(package: str) -> str | None:
 
 def doctor(*, grobid_url: str = "http://127.0.0.1:8070") -> dict[str, Any]:
     """Report availability, never display credential values or contact external providers."""
-    if not grobid_url.startswith(("http://127.0.0.1:", "http://localhost:", "http://[::1]:")):
-        raise ValueError("GROBID diagnostics only allow loopback URLs")
+    grobid_url = validate_grobid_local_url(grobid_url)
     docker = shutil.which("docker") is not None
     daemon = False
     if docker:

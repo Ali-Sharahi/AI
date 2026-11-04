@@ -14,16 +14,31 @@ from datetime import datetime, timezone
 from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 import xml.etree.ElementTree as ET
 
 import httpx
 
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 ATOM = "{http://www.w3.org/2005/Atom}"
 ARXIV = "{http://arxiv.org/schemas/atom}"
 TEI = "{http://www.tei-c.org/ns/1.0}"
 DOI_RE = re.compile(r"10\.\d{4,9}/[-._;()/:A-Z0-9]+", re.I)
+
+
+def validate_grobid_local_url(url: str) -> str:
+    """Reject userinfo, remote hosts, unexpected paths and malformed loopback URLs."""
+    try:
+        parsed = urlsplit(url)
+        allowed_host = parsed.hostname in {"localhost", "127.0.0.1", "::1"}
+        safe = (parsed.scheme == "http" and allowed_host and parsed.port is not None
+                and parsed.username is None and parsed.password is None
+                and parsed.path in ("", "/") and not parsed.query and not parsed.fragment)
+    except ValueError:
+        safe = False
+    if not safe:
+        raise ValueError("GROBID URL must be a local loopback HTTP URL with an explicit port, e.g. http://127.0.0.1:8070")
+    return url.rstrip("/")
 
 
 def utc_now() -> str:
@@ -96,7 +111,7 @@ def openalex_abstract(inverted: Any) -> str:
 class ResearchClient:
     def __init__(self, transport: httpx.BaseTransport | None = None, timeout: float = 30):
         self.http = httpx.Client(timeout=timeout, transport=transport,
-                                 headers={"User-Agent": "scientific-research-harness/0.1 (research metadata auditing)"},
+                                 headers={"User-Agent": "scientific-research-harness/0.2 (research metadata auditing)"},
                                  follow_redirects=False)
 
     def __enter__(self) -> "ResearchClient":
@@ -200,10 +215,8 @@ class ResearchClient:
     def grobid_references(self, pdf: Path, grobid_url: str) -> list[dict[str, Any]]:
         if not pdf.is_file() or pdf.suffix.lower() != ".pdf":
             raise ValueError("Expected an existing PDF")
-        # Only a local GROBID service is allowed by default to avoid PDF exfiltration.
-        allowed = ("http://localhost:", "http://127.0.0.1:", "http://[::1]:")
-        if not grobid_url.startswith(allowed):
-            raise ValueError("GROBID URL must be local")
+        # Do not upload private PDFs to a remote host disguised as a loopback URL.
+        grobid_url = validate_grobid_local_url(grobid_url)
         with pdf.open("rb") as f:
             resp = self.request("POST", grobid_url.rstrip("/") + "/api/processReferences",
                                 files={"input": (pdf.name, f, "application/pdf")},
