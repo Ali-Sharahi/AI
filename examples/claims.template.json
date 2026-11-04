@@ -1,0 +1,15 @@
+{
+  "claims": [
+    {
+      "claim": "REPLACE with a precisely stated theorem or contribution",
+      "formal_proof": "REPLACE with path and theorem identifier, not a summary",
+      "proof_independently_checked": false,
+      "reproducible_experiment": "REPLACE with reproducible command and fixed inputs",
+      "experiment_independently_reproduced": false,
+      "closest_prior_work_comparison": "REPLACE with references and an assumption-level comparison",
+      "evidence": [
+        {"paper_id": "P0001", "locator": "section/page", "excerpt": "exact short evidence from primary paper"}
+      ]
+    }
+  ]
+}
